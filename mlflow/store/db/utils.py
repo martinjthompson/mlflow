@@ -71,6 +71,17 @@ _logger = logging.getLogger(__name__)
 MAX_RETRY_COUNT = 10
 
 
+def _check_sqlite_version(min_version):
+    import sqlite3
+
+    sqlite_version = sqlite3.sqlite_version_info
+    assert all(v1 >= v2 for v1, v2 in zip(sqlite_version, min_version)), (
+        f"SQLite library version {min_version[0]}.{min_version[1]}.{min_version[2]} or higher "
+        f"is required to use this MLflow feature. Detected SQLite version is "
+        f"{sqlite3.sqlite_version}. Please upgrade your SQLite installation."
+    )
+
+
 def _get_package_dir():
     """Returns directory containing MLflow python package."""
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -188,7 +199,9 @@ def _get_managed_session_maker(SessionMaker, db_type):
                     "SQLAlchemy database error. The following exception is caught.\n%s",
                     e,
                 )
-                raise MlflowException(message=e, error_code=TEMPORARILY_UNAVAILABLE) from e
+                raise MlflowException(
+                    message=e, error_code=TEMPORARILY_UNAVAILABLE
+                ) from e
             except sqlalchemy.exc.SQLAlchemyError as e:
                 session.rollback()
                 raise MlflowException(message=e, error_code=BAD_REQUEST) from e
@@ -285,6 +298,9 @@ def create_sqlalchemy_engine_with_retry(db_uri):
 
 
 def create_sqlalchemy_engine(db_uri):
+    if db_uri.startswith("mysql"):
+        _check_sqlite_version(min_version=(3, 51, 0))
+
     pool_size = MLFLOW_SQLALCHEMYSTORE_POOL_SIZE.get()
     pool_max_overflow = MLFLOW_SQLALCHEMYSTORE_MAX_OVERFLOW.get()
     pool_recycle = MLFLOW_SQLALCHEMYSTORE_POOL_RECYCLE.get()
